@@ -79,7 +79,7 @@
             <label>Description <input id="description" type="text" placeholder="Rent, wages, groceries" required></label>
             <label>Amount <input id="amount" type="number" min="0.01" step="0.01" placeholder="0.00" required></label>
             <label>Type <select id="type"><option value="expense">Expense</option><option value="income">Income</option><option value="loan">Loan repayment</option><option value="once">Once-off payment</option></select></label>
-            <label>Frequency <select id="frequency"><option value="fortnightly">Fortnightly</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option><option value="two-year">Every 2 years</option></select></label>
+            <label>Frequency <select id="frequency"><option value="fortnightly">Fortnightly</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="three-month">Every 3 months</option><option value="six-month">Every 6 months</option><option value="twelve-month">Every 12 months</option><option value="three-year">Every 3 years</option><option value="ten-year">Every 10 years</option></select></label>
             <label>First due <input id="due-date" type="date" required></label>
             <label id="loan-balance-field" hidden>Amount owing <input id="loan-balance" type="number" min="0" step="0.01" placeholder="0.00"></label>
             <button id="submit-item" type="submit">Add item</button>
@@ -105,7 +105,8 @@
     const cycleStorageKey = 'fortnightly-budget-cycle-start';
     const themeStorageKey = 'fortnightly-budget-theme';
     const todayValue = valueFromDate(new Date());
-    let transactions = JSON.parse(localStorage.getItem(storageKey) || '[]').map(transaction => ({ ...transaction, dueDate: transaction.dueDate || todayValue, paused: transaction.paused === true, balance: Number(transaction.balance) || 0, paidCycle: transaction.paidCycle || null }));
+    const frequencyMigration = { quarterly: 'three-month', yearly: 'twelve-month', 'two-year': 'twelve-month' };
+    let transactions = JSON.parse(localStorage.getItem(storageKey) || '[]').map(transaction => ({ ...transaction, frequency: frequencyMigration[transaction.frequency] || transaction.frequency, dueDate: transaction.dueDate || todayValue, paused: transaction.paused === true, balance: Number(transaction.balance) || 0, paidCycle: transaction.paidCycle || null }));
     let editingTransactionId = null;
     const currency = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' });
     const dateFormat = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -206,23 +207,19 @@
             }
             return false;
         }
-        if (transaction.frequency === 'quarterly') {
+        if (['three-month', 'six-month', 'twelve-month'].includes(transaction.frequency)) {
+            const monthInterval = { 'three-month': 3, 'six-month': 6, 'twelve-month': 12 }[transaction.frequency];
             for (let day = new Date(cycleStart); day <= cycleEnd; day.setDate(day.getDate() + 1)) {
                 const monthDifference = (day.getFullYear() - firstDue.getFullYear()) * 12 + day.getMonth() - firstDue.getMonth();
-                if (day.getDate() === firstDue.getDate() && monthDifference >= 0 && monthDifference % 3 === 0) return true;
+                if (day.getDate() === firstDue.getDate() && monthDifference >= 0 && monthDifference % monthInterval === 0) return true;
             }
             return false;
         }
-        if (transaction.frequency === 'two-year') {
+        if (transaction.frequency === 'three-year' || transaction.frequency === 'ten-year') {
+            const yearInterval = transaction.frequency === 'three-year' ? 3 : 10;
             for (let day = new Date(cycleStart); day <= cycleEnd; day.setDate(day.getDate() + 1)) {
                 const matchingYears = day.getFullYear() - firstDue.getFullYear();
-                if (day.getDate() === firstDue.getDate() && day.getMonth() === firstDue.getMonth() && matchingYears >= 0 && matchingYears % 2 === 0) return true;
-            }
-            return false;
-        }
-        if (transaction.frequency === 'yearly') {
-            for (let day = new Date(cycleStart); day <= cycleEnd; day.setDate(day.getDate() + 1)) {
-                if (day.getDate() === firstDue.getDate() && day.getMonth() === firstDue.getMonth()) return true;
+                if (day.getDate() === firstDue.getDate() && day.getMonth() === firstDue.getMonth() && matchingYears >= 0 && matchingYears % yearInterval === 0) return true;
             }
             return false;
         }
