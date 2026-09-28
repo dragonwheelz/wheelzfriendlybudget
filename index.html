@@ -79,7 +79,7 @@
             <label>Description <input id="description" type="text" placeholder="Rent, wages, groceries" required></label>
             <label>Amount <input id="amount" type="number" min="0.01" step="0.01" placeholder="0.00" required></label>
             <label>Type <select id="type"><option value="expense">Expense</option><option value="income">Income</option><option value="loan">Loan repayment</option><option value="once">Once-off payment</option></select></label>
-            <label>Frequency <select id="frequency"><option value="fortnightly">Fortnightly</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option></select></label>
+            <label>Frequency <select id="frequency"><option value="fortnightly">Fortnightly</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="quarterly">Quarterly</option><option value="yearly">Yearly</option><option value="two-year">Every 2 years</option></select></label>
             <label>First due <input id="due-date" type="date" required></label>
             <label id="loan-balance-field" hidden>Amount owing <input id="loan-balance" type="number" min="0" step="0.01" placeholder="0.00"></label>
             <button id="submit-item" type="submit">Add item</button>
@@ -210,6 +210,13 @@
             for (let day = new Date(cycleStart); day <= cycleEnd; day.setDate(day.getDate() + 1)) {
                 const monthDifference = (day.getFullYear() - firstDue.getFullYear()) * 12 + day.getMonth() - firstDue.getMonth();
                 if (day.getDate() === firstDue.getDate() && monthDifference >= 0 && monthDifference % 3 === 0) return true;
+            }
+            return false;
+        }
+        if (transaction.frequency === 'two-year') {
+            for (let day = new Date(cycleStart); day <= cycleEnd; day.setDate(day.getDate() + 1)) {
+                const matchingYears = day.getFullYear() - firstDue.getFullYear();
+                if (day.getDate() === firstDue.getDate() && day.getMonth() === firstDue.getMonth() && matchingYears >= 0 && matchingYears % 2 === 0) return true;
             }
             return false;
         }
