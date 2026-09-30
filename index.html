@@ -40,6 +40,9 @@
         .backup-actions { display: flex; align-items: center; gap: 10px; margin-top: 18px; }
         .backup-actions button { width: auto; }
         .save-status { margin: 0; color: #177245; font: .8rem Arial, sans-serif; }
+        .privacy-panel { line-height: 1.55; }
+        .privacy-panel p { margin: 8px 0; }
+        .danger-btn { width: auto; margin-top: 12px; background: #b6473f; }
         .theme-toggle { width: auto; margin-left: auto; }
         body.dark-mode { color: #e8eee9; background: linear-gradient(135deg, #17221f, #263b35); }
         body.dark-mode header p, body.dark-mode label, body.dark-mode .note, body.dark-mode th { color: #b9c8c0; }
@@ -93,6 +96,15 @@
             <input id="backup-file" type="file" accept="application/json" hidden>
             <p class="save-status" id="save-status" aria-live="polite">Saved in this browser</p>
         </div>
+        <p class="note"><strong>Backup warning:</strong> Download a backup regularly and keep it secure. Restoring a backup replaces the budget currently stored in this browser.</p>
+    </section>
+
+    <section class="panel privacy-panel">
+        <h2>Privacy</h2>
+        <p>Your budget information is stored locally in this browser on your device. Your budget data is not uploaded to or stored on our servers. We cannot access your budget information through this application.</p>
+        <p><strong>Important:</strong> Your backup file contains your budget information. Keep it secure and do not share it with anyone you don't trust.</p>
+        <p>Your budget data stays in your browser and is not transmitted to our servers by this application.</p>
+        <button id="delete-all-data" class="danger-btn" type="button">Delete all budget data</button>
     </section>
 
     <section class="section"><h2>Income</h2><div class="table-wrap"><table><thead><tr><th>Description</th><th>Due date</th><th>Frequency</th><th class="amount">This cycle</th><th></th></tr></thead><tbody id="income-list"></tbody></table></div></section>
@@ -122,6 +134,24 @@
         render();
     }
 
+    function deleteAllBudgetData() {
+        const confirmed = window.confirm('Are you sure? This will permanently remove the budget data stored in this browser. Make sure you have downloaded a backup if you want to keep it.');
+        if (!confirmed) return;
+        localStorage.removeItem(storageKey);
+        localStorage.removeItem(cycleStorageKey);
+        transactions = [];
+        editingTransactionId = null;
+        document.getElementById('transaction-form').reset();
+        document.getElementById('submit-item').textContent = 'Add item';
+        document.getElementById('cancel-edit').hidden = true;
+        document.getElementById('frequency').disabled = false;
+        document.getElementById('loan-balance-field').hidden = true;
+        document.getElementById('loan-balance').required = false;
+        document.getElementById('cycle-start').value = valueFromDate(new Date());
+        document.getElementById('save-status').textContent = 'Budget data deleted';
+        render();
+    }
+
     function applyTheme(theme) {
         const darkMode = theme === 'dark';
         document.body.classList.toggle('dark-mode', darkMode);
@@ -137,6 +167,8 @@
     }
 
     function downloadBackup() {
+        const confirmed = window.confirm('Download a backup of your budget? Keep the file secure because it contains your budget information.');
+        if (!confirmed) return;
         const backup = {
             transactions,
             cycleStart: document.getElementById('cycle-start').value,
@@ -423,8 +455,12 @@
         render();
     });
     document.getElementById('download-backup').addEventListener('click', downloadBackup);
-    document.getElementById('restore-backup').addEventListener('click', () => document.getElementById('backup-file').click());
+    document.getElementById('restore-backup').addEventListener('click', () => {
+        const confirmed = window.confirm('Restore a backup? This will replace the budget currently stored in this browser. Download a backup of the current budget first if you want to keep it.');
+        if (confirmed) document.getElementById('backup-file').click();
+    });
     document.getElementById('backup-file').addEventListener('change', restoreBackup);
+    document.getElementById('delete-all-data').addEventListener('click', deleteAllBudgetData);
     render();
 </script>
 </body>
