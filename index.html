@@ -653,6 +653,8 @@
     const spendingCalculator = document.getElementById('spending-calculator');
     document.getElementById('calculator-open').addEventListener('click', () => {
         handleCalculatorAction('clear');
+        const otherSpending = Number(document.getElementById('other-spending').value);
+        setCalculatorValue(String(Number.isFinite(otherSpending) && otherSpending >= 0 ? otherSpending : 0));
         spendingCalculator.showModal();
     });
     document.querySelector('.calculator-close').addEventListener('click', () => spendingCalculator.close());
