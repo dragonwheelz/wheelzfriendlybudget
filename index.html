@@ -25,8 +25,6 @@
         button { border: 0; background: #24302d; color: #fff; cursor: pointer; font-weight: 700; }
         button:hover { background: #177245; } button:focus-visible, input:focus-visible, select:focus-visible { outline: 3px solid #96c8ae; outline-offset: 2px; }
         .section { margin-top: 26px; } h2 { margin: 0 0 10px; font-size: 1.5rem; }
-        .sort-controls { display: flex; justify-content: flex-end; margin-top: 26px; }
-        .sort-controls label { width: min(100%, 220px); }
         .table-wrap { overflow-x: auto; background: rgba(255,255,255,.76); border: 1px solid rgba(36,48,45,.12); border-radius: 8px; }
         table { width: 100%; border-collapse: collapse; min-width: 700px; } th, td { padding: 14px 16px; text-align: left; border-bottom: 1px solid #dde4df; } th { color: #66736e; font: 700 .72rem Arial, sans-serif; text-transform: uppercase; letter-spacing: .06em; } tr:last-child td { border-bottom: 0; }
         .amount { text-align: right; font-family: Arial, sans-serif; } .delete-btn { width: auto; min-height: 34px; padding: 6px 10px; background: transparent; color: #b6473f; border: 1px solid #e3b7b3; font-size: .85rem; }
@@ -108,10 +106,6 @@
         <p>Your budget data stays in your browser and is not transmitted to our servers by this application.</p>
         <button id="delete-all-data" class="danger-btn" type="button">Delete all budget data</button>
     </section>
-
-    <div class="sort-controls">
-        <label for="due-date-sort">Sort by due date <select id="due-date-sort"><option value="ascending">Earliest first</option><option value="descending">Latest first</option></select></label>
-    </div>
 
     <section class="section"><h2>Income</h2><div class="table-wrap"><table><thead><tr><th>Description</th><th>Due date</th><th>Frequency</th><th class="amount">This cycle</th><th></th></tr></thead><tbody id="income-list"></tbody></table></div></section>
     <section class="section"><h2>Expenses</h2><div class="table-wrap"><table><thead><tr><th>Description</th><th>Due date</th><th>Frequency</th><th class="amount">This cycle</th><th></th></tr></thead><tbody id="expense-list"></tbody></table></div></section>
@@ -371,8 +365,8 @@
             const paidButton = document.createElement('button');
             paidButton.className = 'save-btn';
             paidButton.type = 'button';
-            paidButton.textContent = 'Mark paid';
-            paidButton.addEventListener('click', () => deleteTransaction(transaction.id));
+            paidButton.textContent = isPaid ? 'Undo paid' : 'Mark paid';
+            paidButton.addEventListener('click', () => togglePaid(transaction.id));
             action.append(editButton, paidButton, deleteButton);
         } else {
             const paidButton = document.createElement('button');
@@ -393,14 +387,12 @@
     function renderList(elementId, type, total) {
         const list = document.getElementById(elementId);
         const items = transactions.filter(transaction => transaction.type === type);
-        const direction = document.getElementById('due-date-sort').value === 'descending' ? -1 : 1;
-        const sortedItems = [...items].sort((first, second) => first.dueDate.localeCompare(second.dueDate) * direction);
         list.replaceChildren();
         if (!items.length) {
             const row = document.createElement('tr');
             row.innerHTML = `<td class="empty" colspan="${type === 'loan' ? '6' : type === 'once' ? '4' : '5'}">Nothing added yet</td>`;
             list.appendChild(row);
-        } else sortedItems.forEach(transaction => list.appendChild(createRow(transaction, isDueInCycle(transaction, getCycleStart(), getCycleEnd()))));
+        } else items.forEach(transaction => list.appendChild(createRow(transaction, isDueInCycle(transaction, getCycleStart(), getCycleEnd()))));
         return items.filter(transaction => !transaction.paused && isDueInCycle(transaction, getCycleStart(), getCycleEnd())).reduce((sum, transaction) => sum + transaction.amount, 0) + total;
     }
 
@@ -433,7 +425,11 @@
         const onceOffs = renderList('once-list', 'once', 0);
         const loanBalance = transactions.filter(transaction => transaction.type === 'loan').reduce((sum, transaction) => sum + (transaction.balance || 0), 0);
         const loanBalanceAfter = Math.max(0, loanBalance - loans);
-        const remainder = income - expenses - loans - onceOffs;
+        const cycleKey = valueFromDate(cycleStart);
+        const paidOutgoings = transactions
+            .filter(transaction => transaction.type !== 'income' && !transaction.paused && transaction.paidCycle === cycleKey && isDueInCycle(transaction, cycleStart, cycleEnd))
+            .reduce((sum, transaction) => sum + transaction.amount, 0);
+        const remainder = income - paidOutgoings;
         document.getElementById('total-income').textContent = currency.format(income);
         document.getElementById('total-expenses').textContent = currency.format(expenses);
         document.getElementById('total-loans').textContent = currency.format(loans);
@@ -451,7 +447,6 @@
         document.getElementById('frequency').disabled = event.target.value === 'once';
     });
     document.getElementById('due-date').addEventListener('change', updateDueCycleHint);
-    document.getElementById('due-date-sort').addEventListener('change', render);
     document.getElementById('cycle-start').addEventListener('change', updateDueCycleHint);
     document.getElementById('theme-toggle').addEventListener('click', toggleTheme);
     applyTheme(localStorage.getItem(themeStorageKey) || 'light');
