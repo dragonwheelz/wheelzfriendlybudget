@@ -19,6 +19,20 @@
         .summary-item strong { display: block; margin-top: 8px; font: 700 1.8rem Arial, sans-serif; }
         .cycle-panel { display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 10px 18px; }
         .cycle-panel .cycle-range { grid-column: 1 / -1; margin: 0; }
+        .spending-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
+        .calculator-open { width: auto; }
+        .calculator-dialog { width: min(360px, calc(100vw - 32px)); padding: 20px; border: 1px solid #bdc9c2; border-radius: 8px; color: #24302d; background: #f5f1e8; }
+        .calculator-dialog::backdrop { background: rgba(20, 30, 27, .55); }
+        .calculator-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .calculator-header h2 { margin: 0; font-size: 1.25rem; }
+        .calculator-close { width: auto; min-height: 36px; padding: 6px 12px; }
+        .calculator-display { width: 100%; margin-bottom: 10px; text-align: right; font: 700 1.8rem Arial, sans-serif; }
+        .calculator-keys { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+        .calculator-keys button { min-width: 0; }
+        .calculator-keys [data-calculator-key="="], .calculator-keys [data-calculator-action="use"] { background: #177245; }
+        .calculator-keys [data-calculator-action="use"] { grid-column: 1 / -1; }
+        body.dark-mode .calculator-dialog { color: #e8eee9; background: #17221f; border-color: #5b7569; }
+        body.dark-mode .calculator-display { color: #e8eee9; }
         .positive { color: #177245; } .negative { color: #b6473f; }
         .panel { padding: 22px; }
         form { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr auto; gap: 10px; align-items: end; }
@@ -76,9 +90,42 @@
 
     <section class="panel cycle-panel">
         <label>Pay cycle starts <input id="cycle-start" type="date"></label>
-        <label>Other spending this cycle <input id="other-spending" type="number" min="0" step="0.01" value="0"></label>
+        <div class="spending-field">
+            <label>Other spending this cycle <input id="other-spending" type="number" min="0" step="0.01" value="0"></label>
+            <button id="calculator-open" class="calculator-open" type="button">Calculator</button>
+        </div>
         <p class="cycle-range" id="cycle-range"></p>
     </section>
+
+    <dialog id="spending-calculator" class="calculator-dialog" aria-labelledby="calculator-title">
+        <div class="calculator-header">
+            <h2 id="calculator-title">Other spending calculator</h2>
+            <button class="calculator-close" type="button" aria-label="Close calculator">Close</button>
+        </div>
+        <input id="calculator-display" class="calculator-display" type="text" inputmode="decimal" value="0" readonly aria-label="Calculator display" aria-live="polite">
+        <p id="calculator-status" class="note" aria-live="polite"></p>
+        <div id="calculator-keys" class="calculator-keys">
+            <button type="button" data-calculator-action="clear">C</button>
+            <button type="button" data-calculator-action="backspace">Back</button>
+            <button type="button" data-calculator-key="/">/</button>
+            <button type="button" data-calculator-key="*">*</button>
+            <button type="button" data-calculator-key="7">7</button>
+            <button type="button" data-calculator-key="8">8</button>
+            <button type="button" data-calculator-key="9">9</button>
+            <button type="button" data-calculator-key="-">-</button>
+            <button type="button" data-calculator-key="4">4</button>
+            <button type="button" data-calculator-key="5">5</button>
+            <button type="button" data-calculator-key="6">6</button>
+            <button type="button" data-calculator-key="+">+</button>
+            <button type="button" data-calculator-key="1">1</button>
+            <button type="button" data-calculator-key="2">2</button>
+            <button type="button" data-calculator-key="3">3</button>
+            <button type="button" data-calculator-key="=">=</button>
+            <button type="button" data-calculator-key="0">0</button>
+            <button type="button" data-calculator-key=".">.</button>
+            <button type="button" data-calculator-action="use">Use amount</button>
+        </div>
+    </dialog>
 
     <section class="panel">
         <form id="transaction-form">
@@ -443,6 +490,118 @@
         remainderElement.className = remainder >= 0 ? 'positive' : 'negative';
     }
 
+    let calculatorStoredValue = null;
+    let calculatorOperator = null;
+    let calculatorWaitingForOperand = false;
+    let calculatorHasError = false;
+
+    function setCalculatorValue(value) {
+        document.getElementById('calculator-display').value = value;
+    }
+
+    function calculate(left, operator, right) {
+        const result = {
+            '+': () => left + right,
+            '-': () => left - right,
+            '*': () => left * right,
+            '/': () => right === 0 ? NaN : left / right
+        }[operator]?.();
+        return Number.isFinite(result) ? Number(result.toFixed(10)) : null;
+    }
+
+    function enterCalculatorKey(key) {
+        const display = document.getElementById('calculator-display');
+        const status = document.getElementById('calculator-status');
+        status.textContent = '';
+
+        if (/^\d$/.test(key)) {
+            if (calculatorHasError || calculatorWaitingForOperand) {
+                display.value = '0';
+                calculatorHasError = false;
+                calculatorWaitingForOperand = false;
+            }
+            display.value = display.value === '0' ? key : display.value + key;
+            return;
+        }
+
+        if (key === '.') {
+            if (calculatorHasError || calculatorWaitingForOperand) {
+                display.value = '0';
+                calculatorHasError = false;
+                calculatorWaitingForOperand = false;
+            }
+            if (!display.value.includes('.')) display.value += '.';
+            return;
+        }
+
+        if (key === '=') {
+            if (calculatorHasError || calculatorOperator === null || calculatorStoredValue === null) return;
+            const result = calculate(calculatorStoredValue, calculatorOperator, Number(display.value));
+            if (result === null) {
+                display.value = 'Error';
+                status.textContent = 'Cannot divide by zero.';
+                calculatorHasError = true;
+            } else {
+                display.value = String(result);
+            }
+            calculatorStoredValue = null;
+            calculatorOperator = null;
+            calculatorWaitingForOperand = true;
+            return;
+        }
+
+        if (calculatorHasError) return;
+        const currentValue = Number(display.value);
+        if (calculatorOperator !== null && calculatorStoredValue !== null && !calculatorWaitingForOperand) {
+            const result = calculate(calculatorStoredValue, calculatorOperator, currentValue);
+            if (result === null) {
+                display.value = 'Error';
+                status.textContent = 'Cannot divide by zero.';
+                calculatorHasError = true;
+                calculatorStoredValue = null;
+                calculatorOperator = null;
+                return;
+            }
+            display.value = String(result);
+            calculatorStoredValue = result;
+        } else {
+            calculatorStoredValue = currentValue;
+        }
+        calculatorOperator = key;
+        calculatorWaitingForOperand = true;
+    }
+
+    function handleCalculatorAction(action) {
+        const display = document.getElementById('calculator-display');
+        const status = document.getElementById('calculator-status');
+        if (action === 'clear') {
+            calculatorStoredValue = null;
+            calculatorOperator = null;
+            calculatorWaitingForOperand = false;
+            calculatorHasError = false;
+            display.value = '0';
+            status.textContent = '';
+        } else if (action === 'backspace' && !calculatorWaitingForOperand) {
+            if (calculatorHasError) {
+                handleCalculatorAction('clear');
+            } else {
+                display.value = display.value.length > 1 ? display.value.slice(0, -1) : '0';
+            }
+        } else if (action === 'use') {
+            const amount = Number(display.value);
+            if (calculatorHasError || !Number.isFinite(amount)) return;
+            if (amount < 0) {
+                status.textContent = 'Other spending must be zero or more.';
+                return;
+            }
+            const roundedAmount = Math.round((amount + Number.EPSILON) * 100) / 100;
+            const spendingInput = document.getElementById('other-spending');
+            spendingInput.value = roundedAmount.toFixed(2);
+            spendingInput.dispatchEvent(new Event('input', { bubbles: true }));
+            document.getElementById('spending-calculator').close();
+        }
+    }
+
     function render() {
         const cycleStart = getCycleStart();
         const cycleEnd = getCycleEnd();
@@ -490,6 +649,30 @@
         otherSpendingByCycle[cycleKey] = Number.isFinite(amount) && amount > 0 ? amount : 0;
         localStorage.setItem(otherSpendingStorageKey, JSON.stringify(otherSpendingByCycle));
         updateRemainder();
+    });
+    const spendingCalculator = document.getElementById('spending-calculator');
+    document.getElementById('calculator-open').addEventListener('click', () => {
+        handleCalculatorAction('clear');
+        spendingCalculator.showModal();
+    });
+    document.querySelector('.calculator-close').addEventListener('click', () => spendingCalculator.close());
+    document.getElementById('calculator-keys').addEventListener('click', event => {
+        const button = event.target.closest('button');
+        if (!button) return;
+        if (button.dataset.calculatorKey) enterCalculatorKey(button.dataset.calculatorKey);
+        if (button.dataset.calculatorAction) handleCalculatorAction(button.dataset.calculatorAction);
+    });
+    spendingCalculator.addEventListener('keydown', event => {
+        if (/^\d$/.test(event.key) || ['.', '+', '-', '*', '/', '='].includes(event.key)) {
+            event.preventDefault();
+            enterCalculatorKey(event.key);
+        } else if (event.key === 'Enter') {
+            event.preventDefault();
+            enterCalculatorKey('=');
+        } else if (event.key === 'Backspace') {
+            event.preventDefault();
+            handleCalculatorAction('backspace');
+        }
     });
     document.getElementById('download-backup').addEventListener('click', downloadBackup);
     document.getElementById('restore-backup').addEventListener('click', () => {
