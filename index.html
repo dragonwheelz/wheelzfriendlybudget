@@ -17,6 +17,8 @@
         .summary-item { padding: 20px; }
         .summary-item small { display: block; color: #66736e; text-transform: uppercase; letter-spacing: .09em; font: 700 .72rem Arial, sans-serif; }
         .summary-item strong { display: block; margin-top: 8px; font: 700 1.8rem Arial, sans-serif; }
+        .cycle-panel { display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 10px 18px; }
+        .cycle-panel .cycle-range { grid-column: 1 / -1; margin: 0; }
         .positive { color: #177245; } .negative { color: #b6473f; }
         .panel { padding: 22px; }
         form { display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr auto; gap: 10px; align-items: end; }
@@ -53,7 +55,7 @@
         body.dark-mode .cancel-btn { color: #e8eee9; border-color: #5b7569; }
         body.dark-mode .delete-btn { color: #f0aaa4; border-color: #9a5d58; }
         body.dark-mode .empty { color: #9eb0a7; }
-        @media (max-width: 720px) { body { padding: 22px 12px; } header { display: block; } header p { margin-top: 10px; } .summary { grid-template-columns: 1fr; } form { grid-template-columns: 1fr 1fr; } form label:first-child { grid-column: span 2; } form button { grid-column: span 2; } }
+        @media (max-width: 720px) { body { padding: 22px 12px; } header { display: block; } header p { margin-top: 10px; } .summary { grid-template-columns: 1fr; } .cycle-panel { grid-template-columns: 1fr; } .cycle-panel .cycle-range { grid-column: auto; } form { grid-template-columns: 1fr 1fr; } form label:first-child { grid-column: span 2; } form button { grid-column: span 2; } }
     </style>
 </head>
 <body>
@@ -74,6 +76,7 @@
 
     <section class="panel cycle-panel">
         <label>Pay cycle starts <input id="cycle-start" type="date"></label>
+        <label>Other spending this cycle <input id="other-spending" type="number" min="0" step="0.01" value="0"></label>
         <p class="cycle-range" id="cycle-range"></p>
     </section>
 
@@ -115,10 +118,12 @@
 <script>
     const storageKey = 'fortnightly-budget-items';
     const cycleStorageKey = 'fortnightly-budget-cycle-start';
+    const otherSpendingStorageKey = 'fortnightly-budget-other-spending';
     const themeStorageKey = 'fortnightly-budget-theme';
     const todayValue = valueFromDate(new Date());
     const frequencyMigration = { quarterly: 'three-month', yearly: 'twelve-month', 'two-year': 'twelve-month' };
     let transactions = JSON.parse(localStorage.getItem(storageKey) || '[]').map(transaction => ({ ...transaction, frequency: frequencyMigration[transaction.frequency] || transaction.frequency, dueDate: transaction.dueDate || todayValue, paused: transaction.paused === true, balance: Number(transaction.balance) || 0, paidCycle: transaction.paidCycle || null }));
+    let otherSpendingByCycle = JSON.parse(localStorage.getItem(otherSpendingStorageKey) || '{}');
     let editingTransactionId = null;
     const currency = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' });
     const dateFormat = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -139,7 +144,9 @@
         if (!confirmed) return;
         localStorage.removeItem(storageKey);
         localStorage.removeItem(cycleStorageKey);
+        localStorage.removeItem(otherSpendingStorageKey);
         transactions = [];
+        otherSpendingByCycle = {};
         editingTransactionId = null;
         document.getElementById('transaction-form').reset();
         document.getElementById('submit-item').textContent = 'Add item';
@@ -171,6 +178,7 @@
         if (!confirmed) return;
         const backup = {
             transactions,
+            otherSpendingByCycle,
             cycleStart: document.getElementById('cycle-start').value,
             savedAt: new Date().toISOString()
         };
@@ -192,6 +200,8 @@
                 const backup = JSON.parse(reader.result);
                 if (!Array.isArray(backup.transactions) || !backup.transactions.every(transaction => transaction.description && Number(transaction.amount) > 0 && transaction.dueDate)) throw new Error('Invalid backup');
                 transactions = backup.transactions;
+                otherSpendingByCycle = backup.otherSpendingByCycle && typeof backup.otherSpendingByCycle === 'object' ? backup.otherSpendingByCycle : {};
+                localStorage.setItem(otherSpendingStorageKey, JSON.stringify(otherSpendingByCycle));
                 const restoredCycle = backup.cycleStart || valueFromDate(new Date());
                 localStorage.setItem(cycleStorageKey, restoredCycle);
                 saveAndRender();
@@ -415,28 +425,40 @@
         hint.textContent = `This payment falls in the pay cycle ${dateFormat.format(cycleStart)} to ${dateFormat.format(cycleEnd)}.`;
     }
 
+    function updateRemainder(income) {
+        const cycleStart = getCycleStart();
+        const cycleEnd = getCycleEnd();
+        const cycleKey = valueFromDate(cycleStart);
+        const cycleIncome = income ?? transactions
+            .filter(transaction => transaction.type === 'income' && !transaction.paused && isDueInCycle(transaction, cycleStart, cycleEnd))
+            .reduce((sum, transaction) => sum + transaction.amount, 0);
+        const paidOutgoings = transactions
+            .filter(transaction => transaction.type !== 'income' && !transaction.paused && transaction.paidCycle === cycleKey && isDueInCycle(transaction, cycleStart, cycleEnd))
+            .reduce((sum, transaction) => sum + transaction.amount, 0);
+        const otherSpending = Number(document.getElementById('other-spending').value) || 0;
+        const remainder = cycleIncome - paidOutgoings - otherSpending;
+        const remainderElement = document.getElementById('net-remainder');
+        remainderElement.textContent = currency.format(remainder);
+        remainderElement.className = remainder >= 0 ? 'positive' : 'negative';
+    }
+
     function render() {
         const cycleStart = getCycleStart();
         const cycleEnd = getCycleEnd();
+        const cycleKey = valueFromDate(cycleStart);
         document.getElementById('cycle-range').textContent = `${dateFormat.format(cycleStart)} to ${dateFormat.format(cycleEnd)}`;
+        document.getElementById('other-spending').value = otherSpendingByCycle[cycleKey] ?? 0;
         const income = renderList('income-list', 'income', 0);
         const expenses = renderList('expense-list', 'expense', 0);
         const loans = renderList('loan-list', 'loan', 0);
         const onceOffs = renderList('once-list', 'once', 0);
         const loanBalance = transactions.filter(transaction => transaction.type === 'loan').reduce((sum, transaction) => sum + (transaction.balance || 0), 0);
         const loanBalanceAfter = Math.max(0, loanBalance - loans);
-        const cycleKey = valueFromDate(cycleStart);
-        const paidOutgoings = transactions
-            .filter(transaction => transaction.type !== 'income' && !transaction.paused && transaction.paidCycle === cycleKey && isDueInCycle(transaction, cycleStart, cycleEnd))
-            .reduce((sum, transaction) => sum + transaction.amount, 0);
-        const remainder = income - paidOutgoings;
         document.getElementById('total-income').textContent = currency.format(income);
         document.getElementById('total-expenses').textContent = currency.format(expenses);
         document.getElementById('total-loans').textContent = currency.format(loans);
         document.getElementById('loan-balance-after').textContent = currency.format(loanBalanceAfter);
-        const remainderElement = document.getElementById('net-remainder');
-        remainderElement.textContent = currency.format(remainder);
-        remainderElement.className = remainder >= 0 ? 'positive' : 'negative';
+        updateRemainder(income);
     }
 
     document.getElementById('transaction-form').addEventListener('submit', addTransaction);
@@ -457,6 +479,13 @@
     cycleStartInput.addEventListener('change', () => {
         localStorage.setItem(cycleStorageKey, cycleStartInput.value);
         render();
+    });
+    document.getElementById('other-spending').addEventListener('input', event => {
+        const cycleKey = valueFromDate(getCycleStart());
+        const amount = Number(event.target.value);
+        otherSpendingByCycle[cycleKey] = Number.isFinite(amount) && amount > 0 ? amount : 0;
+        localStorage.setItem(otherSpendingStorageKey, JSON.stringify(otherSpendingByCycle));
+        updateRemainder();
     });
     document.getElementById('download-backup').addEventListener('click', downloadBackup);
     document.getElementById('restore-backup').addEventListener('click', () => {
