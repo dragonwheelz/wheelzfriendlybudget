@@ -356,7 +356,28 @@
 
     function togglePaid(id) {
         const cycleKey = valueFromDate(getCycleStart());
-        transactions = transactions.map(transaction => transaction.id === id ? { ...transaction, paidCycle: transaction.paidCycle === cycleKey ? null : cycleKey } : transaction);
+        transactions = transactions.map(transaction => {
+            if (transaction.id !== id) return transaction;
+            const isPaid = transaction.paidCycle === cycleKey;
+            if (transaction.type !== 'loan') return { ...transaction, paidCycle: isPaid ? null : cycleKey };
+            if (isPaid) {
+                const adjustment = Number(transaction.paidBalanceAdjustment) || 0;
+                return {
+                    ...transaction,
+                    paidCycle: null,
+                    balance: (Number(transaction.balance) || 0) + adjustment,
+                    paidBalanceAdjustment: 0
+                };
+            }
+            const balance = Number(transaction.balance) || 0;
+            const adjustment = Math.min(balance, Number(transaction.amount) || 0);
+            return {
+                ...transaction,
+                paidCycle: cycleKey,
+                balance: balance - adjustment,
+                paidBalanceAdjustment: adjustment
+            };
+        });
         saveAndRender();
     }
 
@@ -613,10 +634,7 @@
         const loans = renderList('loan-list', 'loan', 0);
         const onceOffs = renderList('once-list', 'once', 0);
         const loanBalance = transactions.filter(transaction => transaction.type === 'loan').reduce((sum, transaction) => sum + (transaction.balance || 0), 0);
-        const loanRepaymentsDue = transactions
-            .filter(transaction => transaction.type === 'loan' && !transaction.paused && isDueInCycle(transaction, cycleStart, cycleEnd))
-            .reduce((sum, transaction) => sum + transaction.amount, 0);
-        const loanBalanceAfter = Math.max(0, loanBalance - loanRepaymentsDue);
+        const loanBalanceAfter = Math.max(0, loanBalance - loans);
         document.getElementById('total-income').textContent = currency.format(income);
         document.getElementById('total-expenses').textContent = currency.format(expenses);
         document.getElementById('total-loans').textContent = currency.format(loans);
