@@ -12,7 +12,7 @@
         header { display: flex; justify-content: space-between; align-items: end; gap: 20px; margin-bottom: 28px; }
         h1 { margin: 0; font-size: clamp(2rem, 5vw, 3.4rem); letter-spacing: -.04em; }
         header p { max-width: 310px; margin: 0; color: #5b6b64; line-height: 1.5; }
-        .summary { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 24px; }
+        .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-bottom: 24px; }
         .summary-item, .panel { background: rgba(255,255,255,.76); border: 1px solid rgba(36,48,45,.12); border-radius: 8px; }
         .summary-item { padding: 20px; }
         .summary-item small { display: block; color: #66736e; text-transform: uppercase; letter-spacing: .09em; font: 700 .72rem Arial, sans-serif; }
@@ -90,6 +90,7 @@
         <div class="summary-item"><small>Expenses remaining this cycle</small><strong id="total-expenses" class="negative">$0.00</strong></div>
         <div class="summary-item"><small>Loan repayments remaining</small><strong id="total-loans" class="negative">$0.00</strong></div>
         <div class="summary-item"><small>Loan balance after cycle</small><strong id="loan-balance-after" class="negative">$0.00</strong></div>
+        <div class="summary-item"><small>Preorder balance remaining</small><strong id="preorder-balance" class="negative">$0.00</strong></div>
         <div class="summary-item"><small>Left over</small><strong id="net-remainder" class="positive">$0.00</strong></div>
     </section>
 
@@ -287,6 +288,7 @@
         document.getElementById('preorder-sum-total').textContent = currency.format(total);
         document.getElementById('preorder-sum-paid').textContent = currency.format(paid);
         document.getElementById('preorder-sum-remaining').textContent = currency.format(Math.max(0, total - paid));
+        document.getElementById('preorder-balance').textContent = currency.format(Math.max(0, total - paid));
     }
 
     function resetPreorderForm() {
