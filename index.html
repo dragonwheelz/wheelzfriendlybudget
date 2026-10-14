@@ -69,7 +69,7 @@
         body.dark-mode .cancel-btn { color: #e8eee9; border-color: #5b7569; }
         body.dark-mode .delete-btn { color: #f0aaa4; border-color: #9a5d58; }
         body.dark-mode .empty { color: #9eb0a7; }
-        .preorder-form { grid-template-columns: 2fr 1fr 1fr 1fr auto; margin-bottom: 14px; }
+        .preorder-form { grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; margin-bottom: 14px; }
         .preorder-remaining { font-weight: 700; } .preorder-done { color: #177245; }
         .preorder-pay-input { width: 100px; min-height: 34px; padding: 6px 8px; }
         .preorder-actions { display: flex; gap: 6px; justify-content: flex-end; }
@@ -173,6 +173,7 @@
             <label>Total price <input id="preorder-total" type="number" min="0.01" step="0.01" placeholder="0.00" required></label>
             <label>Paid so far <input id="preorder-paid" type="number" min="0" step="0.01" placeholder="0.00" value="0"></label>
             <label>Due date <input id="preorder-due" type="date"></label>
+            <label>Or TBC year <select id="preorder-tbc"><option value="">—</option></select></label>
             <button type="submit">Add preorder</button>
         </form>
         <div class="table-wrap"><table><thead><tr><th>Item</th><th>Due date</th><th class="amount">Total</th><th class="amount">Paid</th><th class="amount">Remaining</th><th></th></tr></thead><tbody id="preorder-list"></tbody><tfoot><tr><th>Totals</th><th></th><th class="amount" id="preorder-sum-total"></th><th class="amount" id="preorder-sum-paid"></th><th class="amount" id="preorder-sum-remaining"></th><th></th></tr></tfoot></table></div>
@@ -201,7 +202,7 @@
     function loadPreorders() {
         try {
             const saved = JSON.parse(localStorage.getItem(preorderStorageKey) || '[]');
-            return Array.isArray(saved) ? saved.filter(item => item && item.name && Number(item.total) > 0).map(item => ({ id: item.id || crypto.randomUUID(), name: String(item.name), total: Number(item.total), paid: Math.max(0, Number(item.paid) || 0), dueDate: /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate || '') ? item.dueDate : '' })) : [];
+            return Array.isArray(saved) ? saved.filter(item => item && item.name && Number(item.total) > 0).map(item => ({ id: item.id || crypto.randomUUID(), name: String(item.name), total: Number(item.total), paid: Math.max(0, Number(item.paid) || 0), dueDate: /^\d{4}-\d{2}-\d{2}$/.test(item.dueDate || '') ? item.dueDate : '', tbcYear: /^\d{4}$/.test(String(item.tbcYear || '')) ? String(item.tbcYear) : '' })) : [];
         } catch {
             return [];
         }
@@ -228,6 +229,8 @@
                 const [y, m, d] = item.dueDate.split('-').map(Number);
                 dueCell.textContent = dateFormat.format(new Date(y, m - 1, d));
                 if (remaining > 0 && item.dueDate < todayValue) { dueCell.textContent += ' (overdue)'; dueCell.className = 'negative'; }
+            } else if (item.tbcYear) {
+                dueCell.textContent = `TBC ${item.tbcYear}`;
             } else {
                 dueCell.textContent = '—';
             }
@@ -274,7 +277,7 @@
         event.preventDefault();
         const total = Number(document.getElementById('preorder-total').value);
         const paid = Math.min(total, Math.max(0, Number(document.getElementById('preorder-paid').value) || 0));
-        preorders.push({ id: crypto.randomUUID(), name: document.getElementById('preorder-name').value.trim(), total, paid, dueDate: document.getElementById('preorder-due').value });
+        preorders.push({ id: crypto.randomUUID(), name: document.getElementById('preorder-name').value.trim(), total, paid, dueDate: document.getElementById('preorder-due').value, tbcYear: document.getElementById('preorder-due').value ? '' : document.getElementById('preorder-tbc').value });
         event.target.reset();
         savePreorders();
     }
@@ -752,6 +755,8 @@
 
     document.getElementById('transaction-form').addEventListener('submit', addTransaction);
     document.getElementById('cancel-edit').addEventListener('click', cancelEditing);
+    const tbcSelect = document.getElementById('preorder-tbc');
+    for (let year = new Date().getFullYear(); year <= new Date().getFullYear() + 5; year++) tbcSelect.add(new Option(`TBC ${year}`, year));
     document.getElementById('preorder-form').addEventListener('submit', addPreorder);
     renderPreorders();
     document.getElementById('type').addEventListener('change', event => {
