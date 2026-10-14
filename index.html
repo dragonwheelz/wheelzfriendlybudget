@@ -163,9 +163,9 @@
     </section>
 
     <section class="section"><h2>Income</h2><div class="table-wrap"><table><thead><tr><th>Description</th><th>Due date</th><th>Frequency</th><th class="amount">This cycle</th><th></th></tr></thead><tbody id="income-list"></tbody></table></div></section>
-    <section class="section"><h2>Expenses</h2><div class="table-wrap"><table><thead><tr><th>Description</th><th>Due date</th><th>Frequency</th><th class="amount">This cycle</th><th></th></tr></thead><tbody id="expense-list"></tbody></table></div></section>
-    <section class="section"><h2>Loan repayments</h2><div class="table-wrap"><table><thead><tr><th>Description</th><th>Due date</th><th>Frequency</th><th class="loan-balance">Owing</th><th class="amount">This cycle</th><th></th></tr></thead><tbody id="loan-list"></tbody></table></div></section>
-    <section class="section"><h2>Once-off payments</h2><div class="table-wrap"><table><thead><tr><th>Description</th><th>Due date</th><th class="amount">This cycle</th><th></th></tr></thead><tbody id="once-list"></tbody></table></div></section>
+    <section class="section"><h2>Expenses</h2><div class="backup-actions" style="margin:0 0 10px"><button class="sort-date-btn" data-sort-type="expense" type="button" aria-pressed="false">Sort by date</button></div><div class="table-wrap"><table><thead><tr><th>Description</th><th>Due date</th><th>Frequency</th><th class="amount">This cycle</th><th></th></tr></thead><tbody id="expense-list"></tbody></table></div></section>
+    <section class="section"><h2>Loan repayments</h2><div class="backup-actions" style="margin:0 0 10px"><button class="sort-date-btn" data-sort-type="loan" type="button" aria-pressed="false">Sort by date</button></div><div class="table-wrap"><table><thead><tr><th>Description</th><th>Due date</th><th>Frequency</th><th class="loan-balance">Owing</th><th class="amount">This cycle</th><th></th></tr></thead><tbody id="loan-list"></tbody></table></div></section>
+    <section class="section"><h2>Once-off payments</h2><div class="backup-actions" style="margin:0 0 10px"><button class="sort-date-btn" data-sort-type="once" type="button" aria-pressed="false">Sort by date</button></div><div class="table-wrap"><table><thead><tr><th>Description</th><th>Due date</th><th class="amount">This cycle</th><th></th></tr></thead><tbody id="once-list"></tbody></table></div></section>
     <section class="section">
         <h2>Preorders</h2>
         <form id="preorder-form" class="preorder-form">
@@ -177,6 +177,7 @@
             <button id="preorder-submit" type="submit">Add preorder</button>
             <button id="preorder-cancel" class="cancel-btn" type="button" hidden>Cancel</button>
         </form>
+        <div class="backup-actions"><button id="preorder-sort" type="button" aria-pressed="false">Sort by date</button></div>
         <div class="table-wrap"><table><thead><tr><th>Item</th><th>Due date</th><th class="amount">Total</th><th class="amount">Paid</th><th class="amount">Remaining</th><th></th></tr></thead><tbody id="preorder-list"></tbody><tfoot><tr><th>Totals</th><th></th><th class="amount" id="preorder-sum-total"></th><th class="amount" id="preorder-sum-paid"></th><th class="amount" id="preorder-sum-remaining"></th><th></th></tr></tfoot></table></div>
     </section>
 </main>
@@ -186,12 +187,16 @@
     const otherSpendingStorageKey = 'fortnightly-budget-other-spending';
     const themeStorageKey = 'fortnightly-budget-theme';
     const preorderStorageKey = 'fortnightly-budget-preorders';
+    const listSortStorageKey = 'fortnightly-budget-sorted-lists';
+    const preorderSortStorageKey = 'fortnightly-budget-preorders-sorted';
     const todayValue = valueFromDate(new Date());
     const frequencyMigration = { quarterly: 'three-month', yearly: 'twelve-month', 'two-year': 'twelve-month' };
     let transactions = JSON.parse(localStorage.getItem(storageKey) || '[]').map(transaction => ({ ...transaction, frequency: frequencyMigration[transaction.frequency] || transaction.frequency, dueDate: transaction.dueDate || todayValue, paused: transaction.paused === true, balance: Number(transaction.balance) || 0, paidCycle: transaction.paidCycle || null }));
     let otherSpendingByCycle = JSON.parse(localStorage.getItem(otherSpendingStorageKey) || '{}');
     let preorders = loadPreorders();
     let editingPreorderId = null;
+    let sortedLists = (() => { try { const saved = JSON.parse(localStorage.getItem(listSortStorageKey)); return Array.isArray(saved) ? saved : []; } catch { return []; } })();
+    let sortPreordersByDate = localStorage.getItem(preorderSortStorageKey) === 'true';
     let editingTransactionId = null;
     const currency = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' });
     const dateFormat = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -221,7 +226,12 @@
         if (!preorders.length) {
             body.innerHTML = '<tr><td class="empty" colspan="6">No preorders yet</td></tr>';
         }
-        preorders.forEach(item => {
+        const sortKey = item => item.dueDate || (item.tbcYear ? `${item.tbcYear}-12-31~` : '9999');
+        const visible = sortPreordersByDate ? [...preorders].sort((a, b) => sortKey(a).localeCompare(sortKey(b))) : preorders;
+        const sortButton = document.getElementById('preorder-sort');
+        sortButton.textContent = sortPreordersByDate ? 'Sorted by date (click to unsort)' : 'Sort by date';
+        sortButton.setAttribute('aria-pressed', sortPreordersByDate);
+        visible.forEach(item => {
             const remaining = Math.max(0, item.total - item.paid);
             const row = document.createElement('tr');
             const name = document.createElement('td');
@@ -613,6 +623,12 @@
     function renderList(elementId, type, total) {
         const list = document.getElementById(elementId);
         const items = transactions.filter(transaction => transaction.type === type);
+        if (sortedLists.includes(type)) items.sort((a, b) => (a.dueDate || '').localeCompare(b.dueDate || ''));
+        const sortButton = document.querySelector(`[data-sort-type="${type}"]`);
+        if (sortButton) {
+            sortButton.textContent = sortedLists.includes(type) ? 'Sorted by date (click to unsort)' : 'Sort by date';
+            sortButton.setAttribute('aria-pressed', sortedLists.includes(type));
+        }
         list.replaceChildren();
         if (!items.length) {
             const row = document.createElement('tr');
@@ -795,7 +811,18 @@
     const tbcSelect = document.getElementById('preorder-tbc');
     for (let year = new Date().getFullYear(); year <= new Date().getFullYear() + 5; year++) tbcSelect.add(new Option(`TBC ${year}`, year));
     document.getElementById('preorder-form').addEventListener('submit', addPreorder);
+    document.querySelectorAll('.sort-date-btn').forEach(button => button.addEventListener('click', () => {
+        const type = button.dataset.sortType;
+        sortedLists = sortedLists.includes(type) ? sortedLists.filter(other => other !== type) : [...sortedLists, type];
+        localStorage.setItem(listSortStorageKey, JSON.stringify(sortedLists));
+        render();
+    }));
     document.getElementById('preorder-cancel').addEventListener('click', resetPreorderForm);
+    document.getElementById('preorder-sort').addEventListener('click', () => {
+        sortPreordersByDate = !sortPreordersByDate;
+        localStorage.setItem(preorderSortStorageKey, sortPreordersByDate);
+        renderPreorders();
+    });
     renderPreorders();
     document.getElementById('type').addEventListener('change', event => {
         document.getElementById('loan-balance-field').hidden = event.target.value !== 'loan';
