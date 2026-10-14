@@ -479,6 +479,26 @@
         return difference % interval === 0 || (firstDue >= cycleStart && firstDue <= cycleEnd);
     }
 
+    function nextDueDate(transaction, from) {
+        const first = dateFromValue(transaction.dueDate);
+        if (Number.isNaN(first.getTime()) || first >= from || transaction.frequency === 'once') return first;
+        const days = { weekly: 7, fortnightly: 14 }[transaction.frequency];
+        if (days) {
+            const next = new Date(first);
+            next.setDate(next.getDate() + Math.ceil(daysBetween(first, from) / days) * days);
+            return next;
+        }
+        const monthStep = { monthly: 1, 'three-month': 3, 'six-month': 6, yearly: 12, 'twelve-month': 12, 'three-year': 36, 'ten-year': 120 }[transaction.frequency];
+        if (!monthStep) return first;
+        const monthsApart = (from.getFullYear() - first.getFullYear()) * 12 + from.getMonth() - first.getMonth();
+        for (let step = Math.max(0, Math.floor(monthsApart / monthStep)); ; step++) {
+            const monthIndex = first.getMonth() + step * monthStep;
+            const lastDay = new Date(first.getFullYear(), monthIndex + 1, 0).getDate();
+            const candidate = new Date(first.getFullYear(), monthIndex, Math.min(first.getDate(), lastDay));
+            if (candidate >= from) return candidate;
+        }
+    }
+
     function addTransaction(event) {
         event.preventDefault();
         const description = document.getElementById('description').value.trim();
@@ -574,7 +594,7 @@
         const description = document.createElement('td');
         description.textContent = transaction.description;
         const original = document.createElement('td');
-        original.textContent = dateFormat.format(dateFromValue(transaction.dueDate));
+        original.textContent = dateFormat.format(nextDueDate(transaction, getCycleStart()));
         const frequency = document.createElement('td');
         frequency.textContent = transaction.frequency;
         const balance = document.createElement('td');
