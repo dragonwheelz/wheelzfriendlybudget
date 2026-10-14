@@ -19,6 +19,7 @@
         .summary-item strong { display: block; margin-top: 8px; font: 700 1.8rem Arial, sans-serif; }
         .cycle-panel { display: grid; grid-template-columns: 1fr 1fr; align-items: end; gap: 10px 18px; }
         .cycle-panel .cycle-range { grid-column: 1 / -1; margin: 0; }
+        .cycle-panel #next-cycle { grid-column: 1 / -1; }
         .spending-field { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: end; }
         .calculator-open { width: auto; }
         .calculator-dialog { width: min(360px, calc(100vw - 32px)); padding: 20px; border: 1px solid #bdc9c2; border-radius: 8px; color: #24302d; background: #f5f1e8; }
@@ -101,6 +102,7 @@
             <button id="calculator-open" class="calculator-open" type="button">Calculator</button>
         </div>
         <p class="cycle-range" id="cycle-range"></p>
+        <button id="next-cycle" type="button">Advance to next pay cycle</button>
     </section>
 
     <dialog id="spending-calculator" class="calculator-dialog" aria-labelledby="calculator-title">
@@ -841,6 +843,14 @@
     localStorage.setItem(cycleStorageKey, cycleStartInput.value);
     cycleStartInput.addEventListener('change', () => {
         localStorage.setItem(cycleStorageKey, cycleStartInput.value);
+        render();
+    });
+    document.getElementById('next-cycle').addEventListener('click', () => {
+        const next = getCycleStart();
+        next.setDate(next.getDate() + 14);
+        cycleStartInput.value = valueFromDate(next);
+        localStorage.setItem(cycleStorageKey, cycleStartInput.value);
+        updateDueCycleHint();
         render();
     });
     document.getElementById('other-spending').addEventListener('input', event => {
