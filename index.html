@@ -174,7 +174,8 @@
             <label>Paid so far <input id="preorder-paid" type="number" min="0" step="0.01" placeholder="0.00" value="0"></label>
             <label>Due date <input id="preorder-due" type="date"></label>
             <label>Or TBC year <select id="preorder-tbc"><option value="">—</option></select></label>
-            <button type="submit">Add preorder</button>
+            <button id="preorder-submit" type="submit">Add preorder</button>
+            <button id="preorder-cancel" class="cancel-btn" type="button" hidden>Cancel</button>
         </form>
         <div class="table-wrap"><table><thead><tr><th>Item</th><th>Due date</th><th class="amount">Total</th><th class="amount">Paid</th><th class="amount">Remaining</th><th></th></tr></thead><tbody id="preorder-list"></tbody><tfoot><tr><th>Totals</th><th></th><th class="amount" id="preorder-sum-total"></th><th class="amount" id="preorder-sum-paid"></th><th class="amount" id="preorder-sum-remaining"></th><th></th></tr></tfoot></table></div>
     </section>
@@ -190,6 +191,7 @@
     let transactions = JSON.parse(localStorage.getItem(storageKey) || '[]').map(transaction => ({ ...transaction, frequency: frequencyMigration[transaction.frequency] || transaction.frequency, dueDate: transaction.dueDate || todayValue, paused: transaction.paused === true, balance: Number(transaction.balance) || 0, paidCycle: transaction.paidCycle || null }));
     let otherSpendingByCycle = JSON.parse(localStorage.getItem(otherSpendingStorageKey) || '{}');
     let preorders = loadPreorders();
+    let editingPreorderId = null;
     let editingTransactionId = null;
     const currency = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' });
     const dateFormat = new Intl.DateTimeFormat('en-AU', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -256,13 +258,17 @@
                 item.paid = Math.min(item.total, item.paid + amount);
                 savePreorders();
             });
+            const editBtn = document.createElement('button');
+            editBtn.type = 'button'; editBtn.className = 'edit-btn'; editBtn.textContent = 'Edit';
+            editBtn.addEventListener('click', () => startEditingPreorder(item));
             const deleteBtn = document.createElement('button');
             deleteBtn.type = 'button'; deleteBtn.className = 'delete-btn'; deleteBtn.textContent = 'Delete';
             deleteBtn.addEventListener('click', () => {
+                if (editingPreorderId === item.id) resetPreorderForm();
                 preorders = preorders.filter(other => other.id !== item.id);
                 savePreorders();
             });
-            actions.append(payInput, payBtn, deleteBtn);
+            actions.append(payInput, payBtn, editBtn, deleteBtn);
             row.append(name, dueCell, ...cells, remainingCell, actions);
             body.appendChild(row);
         });
@@ -273,10 +279,40 @@
         document.getElementById('preorder-sum-remaining').textContent = currency.format(Math.max(0, total - paid));
     }
 
+    function resetPreorderForm() {
+        editingPreorderId = null;
+        document.getElementById('preorder-form').reset();
+        document.getElementById('preorder-submit').textContent = 'Add preorder';
+        document.getElementById('preorder-cancel').hidden = true;
+    }
+
+    function startEditingPreorder(item) {
+        editingPreorderId = item.id;
+        document.getElementById('preorder-name').value = item.name;
+        document.getElementById('preorder-total').value = item.total;
+        document.getElementById('preorder-paid').value = item.paid;
+        document.getElementById('preorder-due').value = item.dueDate || '';
+        document.getElementById('preorder-tbc').value = item.tbcYear || '';
+        document.getElementById('preorder-submit').textContent = 'Save changes';
+        document.getElementById('preorder-cancel').hidden = false;
+        document.getElementById('preorder-name').focus();
+    }
+
     function addPreorder(event) {
         event.preventDefault();
         const total = Number(document.getElementById('preorder-total').value);
         const paid = Math.min(total, Math.max(0, Number(document.getElementById('preorder-paid').value) || 0));
+        const existing = preorders.find(item => item.id === editingPreorderId);
+        if (existing) {
+            existing.name = document.getElementById('preorder-name').value.trim();
+            existing.total = total;
+            existing.paid = paid;
+            existing.dueDate = document.getElementById('preorder-due').value;
+            existing.tbcYear = existing.dueDate ? '' : document.getElementById('preorder-tbc').value;
+            resetPreorderForm();
+            savePreorders();
+            return;
+        }
         preorders.push({ id: crypto.randomUUID(), name: document.getElementById('preorder-name').value.trim(), total, paid, dueDate: document.getElementById('preorder-due').value, tbcYear: document.getElementById('preorder-due').value ? '' : document.getElementById('preorder-tbc').value });
         event.target.reset();
         savePreorders();
@@ -296,6 +332,7 @@
         localStorage.removeItem(otherSpendingStorageKey);
         localStorage.removeItem(preorderStorageKey);
         preorders = [];
+        resetPreorderForm();
         renderPreorders();
         transactions = [];
         otherSpendingByCycle = {};
@@ -758,6 +795,7 @@
     const tbcSelect = document.getElementById('preorder-tbc');
     for (let year = new Date().getFullYear(); year <= new Date().getFullYear() + 5; year++) tbcSelect.add(new Option(`TBC ${year}`, year));
     document.getElementById('preorder-form').addEventListener('submit', addPreorder);
+    document.getElementById('preorder-cancel').addEventListener('click', resetPreorderForm);
     renderPreorders();
     document.getElementById('type').addEventListener('change', event => {
         document.getElementById('loan-balance-field').hidden = event.target.value !== 'loan';
