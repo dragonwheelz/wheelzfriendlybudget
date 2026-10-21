@@ -449,34 +449,8 @@
     }
 
     function isDueInCycle(transaction, cycleStart, cycleEnd) {
-        const firstDue = dateFromValue(transaction.dueDate);
-        if (Number.isNaN(firstDue.getTime())) return false;
-        if (transaction.frequency === 'once') return firstDue >= cycleStart && firstDue <= cycleEnd;
-        if (transaction.frequency === 'monthly') {
-            for (let day = new Date(cycleStart); day <= cycleEnd; day.setDate(day.getDate() + 1)) {
-                if (day.getDate() === firstDue.getDate()) return true;
-            }
-            return false;
-        }
-        if (['three-month', 'six-month', 'yearly', 'twelve-month'].includes(transaction.frequency)) {
-            const monthInterval = { 'three-month': 3, 'six-month': 6, yearly: 12, 'twelve-month': 12 }[transaction.frequency];
-            for (let day = new Date(cycleStart); day <= cycleEnd; day.setDate(day.getDate() + 1)) {
-                const monthDifference = (day.getFullYear() - firstDue.getFullYear()) * 12 + day.getMonth() - firstDue.getMonth();
-                if (day.getDate() === firstDue.getDate() && monthDifference >= 0 && monthDifference % monthInterval === 0) return true;
-            }
-            return false;
-        }
-        if (transaction.frequency === 'three-year' || transaction.frequency === 'ten-year') {
-            const yearInterval = transaction.frequency === 'three-year' ? 3 : 10;
-            for (let day = new Date(cycleStart); day <= cycleEnd; day.setDate(day.getDate() + 1)) {
-                const matchingYears = day.getFullYear() - firstDue.getFullYear();
-                if (day.getDate() === firstDue.getDate() && day.getMonth() === firstDue.getMonth() && matchingYears >= 0 && matchingYears % yearInterval === 0) return true;
-            }
-            return false;
-        }
-        const interval = transaction.frequency === 'weekly' ? 7 : 14;
-        const difference = Math.abs(daysBetween(firstDue, cycleStart));
-        return difference % interval === 0 || (firstDue >= cycleStart && firstDue <= cycleEnd);
+        const dueDate = nextDueDate(transaction, cycleStart);
+        return !Number.isNaN(dueDate.getTime()) && dueDate >= cycleStart && dueDate <= cycleEnd;
     }
 
     function nextDueDate(transaction, from) {
