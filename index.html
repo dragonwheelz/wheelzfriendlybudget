@@ -73,7 +73,10 @@
         .preorder-form { grid-template-columns: 2fr 1fr 1fr 1fr 1fr auto; margin-bottom: 14px; }
         .preorder-remaining { font-weight: 700; } .preorder-done { color: #177245; }
         .preorder-pay-input { width: 100px; min-height: 34px; padding: 6px 8px; }
+        .preorder-select { width: auto; min-height: auto; margin: 0; padding: 0; accent-color: #177245; }
+        .preorder-selection-total { margin: 14px 0 0; color: #5b6b64; font: .9rem Arial, sans-serif; }
         .preorder-actions { display: flex; gap: 6px; justify-content: flex-end; }
+        body.dark-mode .preorder-selection-total { color: #b9c8c0; }
         @media (max-width: 720px) { .preorder-form { grid-template-columns: 1fr 1fr; } .preorder-form label:first-child, .preorder-form button { grid-column: span 2; } }
         @media (max-width: 720px) { body { padding: 22px 12px; } header { display: block; } header p { margin-top: 10px; } .summary { grid-template-columns: 1fr; } .cycle-panel { grid-template-columns: 1fr; } .cycle-panel .cycle-range { grid-column: auto; } form { grid-template-columns: 1fr 1fr; } form label:first-child { grid-column: span 2; } form button { grid-column: span 2; } }
     </style>
@@ -181,7 +184,8 @@
             <button id="preorder-cancel" class="cancel-btn" type="button" hidden>Cancel</button>
         </form>
         <div class="backup-actions"><button id="preorder-sort" type="button" aria-pressed="false">Sort by date</button></div>
-        <div class="table-wrap"><table><thead><tr><th>Item</th><th>Due date</th><th class="amount">Total</th><th class="amount">Paid</th><th class="amount">Remaining</th><th></th></tr></thead><tbody id="preorder-list"></tbody><tfoot><tr><th>Totals</th><th></th><th class="amount" id="preorder-sum-total"></th><th class="amount" id="preorder-sum-paid"></th><th class="amount" id="preorder-sum-remaining"></th><th></th></tr></tfoot></table></div>
+        <p class="preorder-selection-total" aria-live="polite">Selected preorder balance: <strong id="selected-preorder-balance">$0.00</strong> (<span id="selected-preorder-count">0 selected</span>)</p>
+        <div class="table-wrap"><table><thead><tr><th>Select</th><th>Item</th><th>Due date</th><th class="amount">Total</th><th class="amount">Paid</th><th class="amount">Remaining</th><th></th></tr></thead><tbody id="preorder-list"></tbody><tfoot><tr><th colspan="3">Totals</th><th class="amount" id="preorder-sum-total"></th><th class="amount" id="preorder-sum-paid"></th><th class="amount" id="preorder-sum-remaining"></th><th></th></tr></tfoot></table></div>
     </section>
 </main>
 <script>
@@ -197,6 +201,7 @@
     let transactions = JSON.parse(localStorage.getItem(storageKey) || '[]').map(transaction => ({ ...transaction, frequency: frequencyMigration[transaction.frequency] || transaction.frequency, dueDate: transaction.dueDate || todayValue, paused: transaction.paused === true, balance: Number(transaction.balance) || 0, paidCycle: transaction.paidCycle || null }));
     let otherSpendingByCycle = JSON.parse(localStorage.getItem(otherSpendingStorageKey) || '{}');
     let preorders = loadPreorders();
+    const selectedPreorderIds = new Set();
     let editingPreorderId = null;
     let sortedLists = (() => { try { const saved = JSON.parse(localStorage.getItem(listSortStorageKey)); return Array.isArray(saved) ? saved : []; } catch { return []; } })();
     let sortPreordersByDate = localStorage.getItem(preorderSortStorageKey) === 'true';
@@ -223,12 +228,22 @@
         renderPreorders();
     }
 
+    function updateSelectedPreorderBalance() {
+        const selected = preorders.filter(item => selectedPreorderIds.has(item.id));
+        const remaining = selected.reduce((sum, item) => sum + Math.max(0, item.total - item.paid), 0);
+        document.getElementById('selected-preorder-balance').textContent = currency.format(remaining);
+        document.getElementById('selected-preorder-count').textContent = `${selected.length} selected`;
+    }
+
     function renderPreorders() {
         const body = document.getElementById('preorder-list');
         body.innerHTML = '';
         if (!preorders.length) {
-            body.innerHTML = '<tr><td class="empty" colspan="6">No preorders yet</td></tr>';
+            body.innerHTML = '<tr><td class="empty" colspan="7">No preorders yet</td></tr>';
         }
+        selectedPreorderIds.forEach(id => {
+            if (!preorders.some(item => item.id === id)) selectedPreorderIds.delete(id);
+        });
         const sortKey = item => item.dueDate || (item.tbcYear ? `${item.tbcYear}-12-31~` : '9999');
         const visible = sortPreordersByDate ? [...preorders].sort((a, b) => sortKey(a).localeCompare(sortKey(b))) : preorders;
         const sortButton = document.getElementById('preorder-sort');
@@ -237,6 +252,18 @@
         visible.forEach(item => {
             const remaining = Math.max(0, item.total - item.paid);
             const row = document.createElement('tr');
+            const selectCell = document.createElement('td');
+            const selectInput = document.createElement('input');
+            selectInput.type = 'checkbox';
+            selectInput.className = 'preorder-select';
+            selectInput.checked = selectedPreorderIds.has(item.id);
+            selectInput.setAttribute('aria-label', `Select ${item.name} for balance total`);
+            selectInput.addEventListener('change', () => {
+                if (selectInput.checked) selectedPreorderIds.add(item.id);
+                else selectedPreorderIds.delete(item.id);
+                updateSelectedPreorderBalance();
+            });
+            selectCell.appendChild(selectInput);
             const name = document.createElement('td');
             name.textContent = item.name;
             const dueCell = document.createElement('td');
@@ -282,7 +309,7 @@
                 savePreorders();
             });
             actions.append(payInput, payBtn, editBtn, deleteBtn);
-            row.append(name, dueCell, ...cells, remainingCell, actions);
+            row.append(selectCell, name, dueCell, ...cells, remainingCell, actions);
             body.appendChild(row);
         });
         const total = preorders.reduce((sum, item) => sum + item.total, 0);
@@ -291,6 +318,7 @@
         document.getElementById('preorder-sum-paid').textContent = currency.format(paid);
         document.getElementById('preorder-sum-remaining').textContent = currency.format(Math.max(0, total - paid));
         document.getElementById('preorder-balance').textContent = currency.format(Math.max(0, total - paid));
+        updateSelectedPreorderBalance();
     }
 
     function resetPreorderForm() {
